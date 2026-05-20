@@ -1,0 +1,19 @@
+# App runtime files (user‑specific)
+folder_hider_history.enc
+folder_hider_pwd.hash
+folder_hider_salt.bin
+
+# Python cache
+__pycache__/
+*.pyc
+
+# PyInstaller build outputs
+build/
+dist/
+*.spec
+
+# IDE / OS junk
+.vscode/
+.idea/
+Thumbs.db
+desktop.ini
