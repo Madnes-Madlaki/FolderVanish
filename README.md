@@ -23,7 +23,7 @@ Standalone Windows executable.
 python 3.6+
 cryptography library
 
-## Run from source
+## Run from source.
 ```bash
 pip install cryptography
 python program.py
