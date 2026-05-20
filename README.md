@@ -11,7 +11,7 @@
 Hide folders so they don't appear even when "Show hidden files" is ON.
 Unhide with one click, keeps track of hidden folders with an encrypted history list.
 Works without password for hide/unhide, history requires unlock.
-Standalone Windows executable.
+Standalone Windows executable available.
 
 ## How to use
 1. Browse or type a folder path.
