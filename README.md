@@ -19,6 +19,9 @@ Standalone Windows executable.
 3. Click **Unhide** –> folder reappears.
 4. **Unlock History** –> enter/create password to see list of hidden folders.
 
+<img width="877" height="664" alt="image" src="https://github.com/user-attachments/assets/3923d08f-2211-4ad5-951c-1887bc3ac8c2" />
+
+
 ## Dependencies 
 python 3.6+
 cryptography library
