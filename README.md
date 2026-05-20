@@ -1,6 +1,6 @@
 ![Windows](https://img.shields.io/badge/Windows-0078D6?style=flat-square&logo=windows&logoColor=white)
 ![Python](https://img.shields.io/badge/Python-3.6+-3776AB?style=flat-square&logo=python&logoColor=white)
-[![GitHub Release](https://img.shields.io/github/v/release/Madnes-Madlaki/FolderVanish?style=flat-square&cacheSeconds=0)](https://github.com/Madnes-Madlaki/FolderVanish/releases)
+[![GitHub Release](https://img.shields.io/github/v/release/Madnes-Madlaki/FolderVanish?style=flat-square)](https://github.com/Madnes-Madlaki/FolderVanish/releases)
 
 # FolderVanish
 
