@@ -22,7 +22,7 @@ Standalone Windows executable available.
 3. Click **Unhide** –> folder reappears.
 4. **Unlock History** –> enter/create password to see list of hidden folders.
 
-<img width="877" height="664" alt="image" src="https://github.com/user-attachments/assets/3923d08f-2211-4ad5-951c-1887bc3ac8c2" />
+<img width="937" height="848" alt="image" src="https://github.com/user-attachments/assets/426b6e0b-23ca-4731-8a68-db2dd4623a56" />
 
 
 ## Dependencies 
