@@ -1,19 +1,44 @@
-# App runtime files (user‑specific)
+# Python cache
+__pycache__/
+*.py[cod]
+*.so
+.Python
+
+# App runtime files 
 folder_hider_history.enc
 folder_hider_pwd.hash
 folder_hider_salt.bin
 
-# Python cache
-__pycache__/
-*.pyc
+# Encrypted folders created by the app
+*.enc
 
-# PyInstaller build outputs
+# PyInstaller build artifacts
 build/
 dist/
 *.spec
 
-# IDE / OS junk
+# Virtual environment
+venv/
+env/
+ENV/
+
+# IDE files
 .vscode/
 .idea/
+*.swp
+*.swo
+*~
+
+# OS junk files
 Thumbs.db
-desktop.ini
+Desktop.ini
+.DS_Store
+
+# Logs and temp files
+*.log
+*.tmp
+temp_*.zip
+
+# Any backup files
+*.bak
+*.backup
