@@ -3,8 +3,7 @@
 [![GitHub Release](https://img.shields.io/github/v/release/Madnes-Madlaki/FolderVanish?style=flat-square&logo=github)](https://github.com/Madnes-Madlaki/FolderVanish/releases)
 
 # FolderVanish
-
-**Hide folders completely using `attrib +s +h`, it provides a UI to the windows default CLI command and protects history using cryptography library**
+**Hide folders completely with the option of encyrpting them with a password using `attrib +s +h`, it provides a UI to the windows default CLI command and protects history using cryptography library**
 ## /!\ Folders are now considered as system files but they can still be seen with the correct methodology.
 Encryption has been added, there is chance to lose the original folder in case of crash / power loss
 since the program deletes the original folder and then creates the .enc file.
