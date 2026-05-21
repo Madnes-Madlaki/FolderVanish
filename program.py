@@ -8,6 +8,10 @@ import base64
 from cryptography.fernet import Fernet
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 from cryptography.hazmat.primitives import hashes
+import zipfile
+import tempfile
+import shutil
+import time
 
 # Files
 HISTORY_FILE = "folder_hider_history.enc"
@@ -21,8 +25,7 @@ class FolderHiderApp:
         self.root = root
         self.root.title("Folder Vanish")
     
-        # ----- Set custom icon (embedded) -----
-        if 'ICON_DATA' in globals() and ICON_DATA:
+        if ICON_DATA:
             import tempfile, atexit
             ico_data = base64.b64decode(ICON_DATA)
             with tempfile.NamedTemporaryFile(delete=False, suffix='.ico') as f:
@@ -32,9 +35,8 @@ class FolderHiderApp:
             atexit.register(lambda: os.unlink(icon_path))
         elif os.path.exists('vencre2.ico'):
             self.root.iconbitmap('vencre2.ico')
-        # ---------------------------------------
         
-        self.root.geometry("700x500")
+        self.root.geometry("750x650")
         
         self.folder_path = tk.StringVar()
         self.history = []
@@ -43,7 +45,8 @@ class FolderHiderApp:
     
         self.build_gui()
         self.refresh_history_display()
-    # ---------- Password & Encryption ----------
+    
+    # ---------- Password & Encryption (for history) ----------
     def derive_key(self, password: str, salt: bytes) -> bytes:
         kdf = PBKDF2HMAC(
             algorithm=hashes.SHA256(),
@@ -55,19 +58,16 @@ class FolderHiderApp:
         return key
     
     def unlock_history(self):
-        """Ask for password and load history"""
-        # Check if first time (no password files)
         if not os.path.exists(PWD_FILE) or not os.path.exists(SALT_FILE):
             self.first_time_setup()
             return
         
-        # Existing password: prompt
         with open(SALT_FILE, "rb") as f:
             salt = f.read()
         with open(PWD_FILE, "r") as f:
             stored_hash = f.read()
         
-        pwd = simpledialog.askstring("Unlock History", "Enter history password:", show='*')
+        pwd = simpledialog.askstring("Unlock History", "Enter history password:", show='*', parent=self.root)
         if not pwd:
             return
         
@@ -84,11 +84,10 @@ class FolderHiderApp:
         self.update_status("History unlocked")
     
     def first_time_setup(self):
-        """Create a password for history (first unlock)"""
-        pwd1 = simpledialog.askstring("Set History Password", "Create a password to protect the history list:", show='*')
+        pwd1 = simpledialog.askstring("Set History Password", "Create a password to protect the history list:", show='*', parent=self.root)
         if not pwd1:
             return
-        pwd2 = simpledialog.askstring("Confirm Password", "Confirm password:", show='*')
+        pwd2 = simpledialog.askstring("Confirm Password", "Confirm password:", show='*', parent=self.root)
         if pwd1 != pwd2:
             messagebox.showerror("Error", "Passwords do not match!")
             return
@@ -105,14 +104,12 @@ class FolderHiderApp:
         with open(PWD_FILE, "w") as f:
             f.write(key_hash)
         
-        # Create empty encrypted history
         self.history = []
         self.save_history()
         self.refresh_history_display()
         messagebox.showinfo("Success", "History password created. History is now unlocked.")
     
     def lock_history(self):
-        """Lock the history (clear from display, forget cipher)"""
         self.unlocked = False
         self.cipher = None
         self.history = []
@@ -120,12 +117,11 @@ class FolderHiderApp:
         self.update_status("History locked")
     
     def change_password(self):
-        """Change history password (only when unlocked)"""
         if not self.unlocked:
             messagebox.showinfo("Info", "Unlock history first.")
             return
         
-        old = simpledialog.askstring("Change Password", "Enter current history password:", show='*')
+        old = simpledialog.askstring("Change Password", "Enter current history password:", show='*', parent=self.root)
         if not old:
             return
         
@@ -143,17 +139,16 @@ class FolderHiderApp:
             messagebox.showerror("Error", "Verification failed")
             return
         
-        new1 = simpledialog.askstring("New Password", "Enter new password:", show='*')
+        new1 = simpledialog.askstring("New Password", "Enter new password:", show='*', parent=self.root)
         if not new1:
             return
-        new2 = simpledialog.askstring("Confirm", "Confirm new password:", show='*')
+        new2 = simpledialog.askstring("Confirm", "Confirm new password:", show='*', parent=self.root)
         if new1 != new2:
             messagebox.showerror("Error", "Passwords do not match!")
             return
         
         new_key = self.derive_key(new1, salt)
         new_key_hash = hashlib.sha256(new_key).hexdigest()
-        # Re-encrypt history with new key
         history_data = json.dumps(self.history).encode()
         encrypted = Fernet(new_key).encrypt(history_data)
         with open(HISTORY_FILE, "wb") as f:
@@ -163,7 +158,6 @@ class FolderHiderApp:
         self.cipher = Fernet(new_key)
         messagebox.showinfo("Success", "Password changed successfully!")
     
-    # ---------- History Encryption (only when unlocked) ----------
     def save_history(self):
         if self.cipher is None:
             return
@@ -185,20 +179,183 @@ class FolderHiderApp:
             messagebox.showerror("Error", f"Failed to load history.\n{e}")
             self.history = []
     
+    # ---------- Folder Encryption Feature ----------
+    def derive_encryption_key(self, password: str, salt: bytes = None) -> tuple:
+        if salt is None:
+            salt = os.urandom(16)
+        kdf = PBKDF2HMAC(
+            algorithm=hashes.SHA256(),
+            length=32,
+            salt=salt,
+            iterations=100000,
+        )
+        key = base64.urlsafe_b64encode(kdf.derive(password.encode()))
+        return Fernet(key), salt
+    
+    def encrypt_folder(self):
+        folder = self.folder_path.get().strip()
+        if not folder or not os.path.isdir(folder):
+            messagebox.showerror("Error", "Select a valid folder to encrypt.")
+            return
+        
+        pwd1 = simpledialog.askstring("Encrypt Folder", "Enter encryption password (for folder contents):", show='*', parent=self.root)
+        if not pwd1:
+            return
+        pwd2 = simpledialog.askstring("Confirm Password", "Confirm encryption password:", show='*', parent=self.root)
+        if pwd1 != pwd2:
+            messagebox.showerror("Error", "Passwords do not match!")
+            return
+        
+        if not messagebox.askyesno("Warning", 
+                                   "Encryption will create an encrypted file and then DELETE the original folder.\n"
+                                   "This operation cannot be undone without the password.\n\n"
+                                   "Are you sure you want to continue?"):
+            return
+        
+        try:
+            temp_zip = tempfile.NamedTemporaryFile(suffix='.zip', delete=False)
+            temp_zip.close()
+            with zipfile.ZipFile(temp_zip.name, 'w', zipfile.ZIP_DEFLATED) as zipf:
+                for root_dir, dirs, files in os.walk(folder):
+                    for file in files:
+                        full_path = os.path.join(root_dir, file)
+                        arcname = os.path.relpath(full_path, os.path.dirname(folder))
+                        zipf.write(full_path, arcname)
+            
+            with open(temp_zip.name, 'rb') as f:
+                zip_data = f.read()
+            
+            fernet, salt = self.derive_encryption_key(pwd1)
+            encrypted_data = fernet.encrypt(zip_data)
+            
+            enc_file = folder + '.enc'
+            with open(enc_file, 'wb') as f:
+                f.write(salt)
+                f.write(encrypted_data)
+            
+            os.unlink(temp_zip.name)
+            shutil.rmtree(folder)
+            
+            subprocess.run(f'attrib +h "{enc_file}"', shell=True, check=False)
+            
+            if self.unlocked and self.cipher:
+                if folder in self.history:
+                    self.history.remove(folder)
+                if enc_file not in self.history:
+                    self.history.append(enc_file)
+                self.save_history()
+                self.refresh_history_display()
+            
+            messagebox.showinfo("Success", f"Folder encrypted and deleted.\nEncrypted file: {enc_file}\n(File has been hidden)")
+            self.update_status(f"Encrypted: {folder}")
+            
+        except Exception as e:
+            messagebox.showerror("Error", f"Encryption failed:\n{e}")
+    
+    def decrypt_file(self, enc_file):
+        """Decrypt a given .enc file and restore folder."""
+        if not enc_file or not enc_file.endswith('.enc') or not os.path.exists(enc_file):
+            messagebox.showerror("Error", "Invalid .enc file.")
+            return
+        
+        pwd = simpledialog.askstring("Decrypt Folder", "Enter encryption password:", show='*', parent=self.root)
+        if not pwd:
+            return
+        
+        try:
+            with open(enc_file, 'rb') as f:
+                salt = f.read(16)
+                encrypted_data = f.read()
+            
+            kdf = PBKDF2HMAC(
+                algorithm=hashes.SHA256(),
+                length=32,
+                salt=salt,
+                iterations=100000,
+            )
+            key = base64.urlsafe_b64encode(kdf.derive(pwd.encode()))
+            fernet = Fernet(key)
+            
+            decrypted_zip_data = fernet.decrypt(encrypted_data)
+            
+            temp_zip = tempfile.NamedTemporaryFile(suffix='.zip', delete=False)
+            temp_zip.write(decrypted_zip_data)
+            temp_zip.close()
+            
+            output_folder = enc_file[:-4]
+            if os.path.exists(output_folder):
+                if not messagebox.askyesno("Folder exists", f"{output_folder} already exists. Overwrite?"):
+                    os.unlink(temp_zip.name)
+                    return
+                shutil.rmtree(output_folder)
+            
+            with zipfile.ZipFile(temp_zip.name, 'r') as zipf:
+                zipf.extractall(os.path.dirname(output_folder))
+            
+            os.unlink(temp_zip.name)
+            
+            # Update history: remove .enc, add restored folder
+            if self.unlocked and self.cipher:
+                if enc_file in self.history:
+                    self.history.remove(enc_file)
+                if output_folder not in self.history:
+                    self.history.append(output_folder)
+                self.save_history()
+                self.refresh_history_display()
+            
+            if messagebox.askyesno("Cleanup", "Delete the encrypted .enc file after decryption?"):
+                os.unlink(enc_file)
+                if self.unlocked and self.cipher and enc_file in self.history:
+                    self.history.remove(enc_file)
+                    self.save_history()
+                    self.refresh_history_display()
+            
+            messagebox.showinfo("Success", f"Folder restored at: {output_folder}")
+            self.update_status(f"Decrypted: {output_folder}")
+            # Optionally set the restored folder path in the entry
+            self.folder_path.set(output_folder)
+            
+        except Exception as e:
+            messagebox.showerror("Error", f"Decryption failed (wrong password or corrupted file):\n{e}")
+    
+    def decrypt_selected(self):
+        """Decrypt the currently selected history item if it's an .enc file."""
+        if not self.unlocked:
+            messagebox.showinfo("Info", "Unlock history first.")
+            return
+        selection = self.history_listbox.curselection()
+        if not selection:
+            messagebox.showinfo("Info", "Select an encrypted file from history.")
+            return
+        line = self.history_listbox.get(selection[0])
+        # Extract path after first space
+        parts = line.split(' ', 1)
+        if len(parts) < 2:
+            return
+        path = parts[1]
+        if not path.endswith('.enc'):
+            messagebox.showinfo("Info", "Selected item is not an encrypted file.")
+            return
+        self.decrypt_file(path)
+    
+    def decrypt_from_file(self):
+        """Original file dialog method."""
+        enc_file = filedialog.askopenfilename(title="Select encrypted .enc file", filetypes=[("Encrypted files", "*.enc")])
+        if enc_file:
+            self.decrypt_file(enc_file)
+    
     # ---------- GUI ----------
     def build_gui(self):
         main_frame = tk.Frame(self.root)
         main_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
         
-        # Top bar with lock/unlock and change password
         top_bar = tk.Frame(main_frame)
         top_bar.pack(fill=tk.X, pady=(0,5))
         tk.Button(top_bar, text="Unlock History", command=self.unlock_history, bg="#3498db", fg="white").pack(side=tk.LEFT, padx=2)
         tk.Button(top_bar, text="Lock History", command=self.lock_history, bg="#95a5a6", fg="white").pack(side=tk.LEFT, padx=2)
         tk.Button(top_bar, text="Change Password", command=self.change_password, bg="#f39c12").pack(side=tk.LEFT, padx=2)
         
-        # Selection frame (always available)
-        select_frame = tk.LabelFrame(main_frame, text="Hide / Unhide Folder", padx=5, pady=5)
+        select_frame = tk.LabelFrame(main_frame, text="Hide / Unhide Folder (attrib +s +h)", padx=5, pady=5)
         select_frame.pack(fill=tk.X, pady=(0,10))
         tk.Label(select_frame, text="Folder:").pack(side=tk.LEFT, padx=5)
         tk.Entry(select_frame, textvariable=self.folder_path, width=50).pack(side=tk.LEFT, padx=5)
@@ -206,7 +363,12 @@ class FolderHiderApp:
         tk.Button(select_frame, text="Hide", command=self.hide_folder, bg="#2c3e50", fg="white").pack(side=tk.LEFT, padx=2)
         tk.Button(select_frame, text="Unhide", command=self.unhide_folder, bg="#27ae60", fg="white").pack(side=tk.LEFT, padx=2)
         
-        # History frame (locked by default)
+        enc_frame = tk.LabelFrame(main_frame, text="Encrypt / Decrypt Folder (AES-256)", padx=5, pady=5)
+        enc_frame.pack(fill=tk.X, pady=(0,10))
+        tk.Button(enc_frame, text="Encrypt Selected Folder", command=self.encrypt_folder, bg="#e74c3c", fg="white", width=25).pack(side=tk.LEFT, padx=5, pady=5)
+        tk.Button(enc_frame, text="Decrypt .enc File (Browse)", command=self.decrypt_from_file, bg="#8e44ad", fg="white", width=25).pack(side=tk.LEFT, padx=5, pady=5)
+        tk.Label(enc_frame, text="(Encryption can fail in case of crash)").pack(side=tk.LEFT, padx=10)
+        
         self.history_frame = tk.LabelFrame(main_frame, text="Hidden Folder History", padx=5, pady=5)
         self.history_frame.pack(fill=tk.BOTH, expand=True)
         
@@ -219,12 +381,12 @@ class FolderHiderApp:
         self.history_listbox.config(yscrollcommand=scrollbar.set)
         self.history_listbox.bind('<<ListboxSelect>>', self.on_history_select)
         
-        # Action buttons (only useful when unlocked)
         btn_frame = tk.Frame(self.history_frame)
         btn_frame.pack(fill=tk.X, pady=(5,0))
         tk.Button(btn_frame, text="Load Selected", command=self.load_selected_from_history, width=15).pack(side=tk.LEFT, padx=2)
         tk.Button(btn_frame, text="Unhide Selected", command=self.unhide_selected_from_history, width=15, bg="#27ae60", fg="white").pack(side=tk.LEFT, padx=2)
-        tk.Button(btn_frame, text="❌ Remove from History", command=self.remove_selected_from_history, width=18, bg="#e67e22", fg="white").pack(side=tk.LEFT, padx=2)
+        tk.Button(btn_frame, text="Decrypt Selected", command=self.decrypt_selected, width=15, bg="#8e44ad", fg="white").pack(side=tk.LEFT, padx=2)
+        tk.Button(btn_frame, text="Remove from History", command=self.remove_selected_from_history, width=18, bg="#e67e22", fg="white").pack(side=tk.LEFT, padx=2)
         tk.Button(btn_frame, text="Refresh Status", command=self.refresh_history_status, width=15).pack(side=tk.LEFT, padx=2)
         
         self.status_label = tk.Label(self.root, text="Ready", bd=1, relief=tk.SUNKEN, anchor=tk.W)
@@ -238,21 +400,33 @@ class FolderHiderApp:
             return
         
         if not self.history:
-            self.history_listbox.insert(tk.END, "📭 No folders in history yet.")
+            self.history_listbox.insert(tk.END, "No folders in history yet.")
             self.history_listbox.itemconfig(0, fg="gray")
             return
         
-        for folder in self.history:
-            status = self.get_folder_status(folder)
-            if status == "hidden":
-                display = f"🔒 {folder}  [HIDDEN]"
-                color = "darkgreen"
-            elif status == "partial":
-                display = f"⚠️ {folder}  [PARTIALLY HIDDEN]"
-                color = "orange"
+        for item in self.history:
+            if item.endswith('.enc') and os.path.exists(item):
+                display = f"[ENCRYPTED] {item}"
+                color = "purple"
+            elif not os.path.exists(item):
+                display = f"[MISSING] {item}"
+                color = "red"
             else:
-                display = f"📁 {folder}  [VISIBLE]"
-                color = "gray"
+                # It's a folder (or a file that is not .enc)
+                if os.path.isdir(item):
+                    stat = self.get_folder_status(item)
+                    if stat == "hidden":
+                        display = f"[HIDDEN] {item}"
+                        color = "darkgreen"
+                    elif stat == "partial":
+                        display = f"[PARTIALLY HIDDEN] {item}"
+                        color = "orange"
+                    else:
+                        display = f"[VISIBLE] {item}"
+                        color = "gray"
+                else:
+                    display = f"[FILE] {item}"
+                    color = "blue"
             self.history_listbox.insert(tk.END, display)
             self.history_listbox.itemconfig(tk.END, fg=color)
     
@@ -288,16 +462,11 @@ class FolderHiderApp:
         selection = self.history_listbox.curselection()
         if selection:
             line = self.history_listbox.get(selection[0])
-            if line.startswith("🔒") or line.startswith("⚠️") or line.startswith("📁"):
-                parts = line.split(' ', 1)
-                if len(parts) >= 2:
-                    raw = parts[1]
-                    if '  [' in raw:
-                        path = raw.rsplit('  [', 1)[0]
-                    else:
-                        path = raw
-                    self.folder_path.set(path)
-                    self.update_status(f"Loaded: {path}")
+            parts = line.split(' ', 1)
+            if len(parts) >= 2:
+                path = parts[1]
+                self.folder_path.set(path)
+                self.update_status(f"Loaded: {path}")
     
     def load_selected_from_history(self):
         if not self.unlocked:
@@ -316,6 +485,10 @@ class FolderHiderApp:
             messagebox.showinfo("Info", "Select a folder to unhide.")
             return
         self.on_history_select(None)
+        path = self.folder_path.get()
+        if path.endswith('.enc'):
+            messagebox.showinfo("Info", "Cannot unhide an encrypted file. Use 'Decrypt Selected' instead.")
+            return
         self.unhide_folder()
     
     def remove_selected_from_history(self):
@@ -326,21 +499,15 @@ class FolderHiderApp:
         if not selection:
             return
         line = self.history_listbox.get(selection[0])
-        if line.startswith("🔒") or line.startswith("⚠️") or line.startswith("📁"):
-            parts = line.split(' ', 1)
-            if len(parts) >= 2:
-                raw = parts[1]
-                if '  [' in raw:
-                    path = raw.rsplit('  [', 1)[0]
-                else:
-                    path = raw
-                if messagebox.askyesno("Confirm", f"Remove '{path}' from history only? (Folder not modified)"):
-                    self.history.remove(path)
-                    self.save_history()
-                    self.refresh_history_display()
-                    self.update_status(f"Removed from history: {path}")
+        parts = line.split(' ', 1)
+        if len(parts) >= 2:
+            path = parts[1]
+            if messagebox.askyesno("Confirm", f"Remove '{path}' from history only? (File/folder not modified)"):
+                self.history.remove(path)
+                self.save_history()
+                self.refresh_history_display()
+                self.update_status(f"Removed from history: {path}")
     
-    # ---------- Core folder operations (always work) ----------
     def browse_folder(self):
         folder = filedialog.askdirectory()
         if folder:
@@ -359,14 +526,15 @@ class FolderHiderApp:
         try:
             subprocess.run(f'attrib -r "{path}"', shell=True, check=False)
             subprocess.run(f'attrib +s +h "{path}"', shell=True, check=True)
-            # If history is unlocked, add to history and save
+            # Small delay to let attributes apply
+            time.sleep(0.2)
             if self.unlocked and self.cipher:
                 if path not in self.history:
                     self.history.append(path)
                     self.save_history()
-                    self.refresh_history_display()
+                # Refresh display to show updated status
+                self.refresh_history_display()
             else:
-                # Still hide but don't record
                 self.update_status(f"Hidden (not recorded, history locked): {path}")
             messagebox.showinfo("Success", f"Folder hidden:\n{path}")
         except Exception as e:
@@ -379,7 +547,7 @@ class FolderHiderApp:
             return
         try:
             subprocess.run(f'attrib -s -h "{path}"', shell=True, check=True)
-            # Optionally refresh status in history if unlocked
+            time.sleep(0.2)
             if self.unlocked:
                 self.refresh_history_display()
             messagebox.showinfo("Success", f"Folder is now visible:\n{path}")
